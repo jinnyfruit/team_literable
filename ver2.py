@@ -163,6 +163,7 @@ if menu == "학생 답안 입력":
     else:
         st.warning("학생 데이터를 추가하세요.")
 
+
 # 첨삭 보고서 생성
 if menu == "첨삭 보고서 생성":
     st.header("첨삭 보고서 생성")
@@ -180,12 +181,17 @@ if menu == "첨삭 보고서 생성":
             student_answers = [a for a in student_answers_data if a[1] == selected_student[0]]
 
             if questions and student_answers:
+                conn = sqlite3.connect("Literable.db")
+                cursor = conn.cursor()
+
                 for idx, question in enumerate(questions):
                     question_text = question[2]
                     model_answer = question[3]
-                    student_answer = next((a[3] for a in student_answers if a[2] == question[0]), None)
-                    if not student_answer:
+                    student_answer_record = next((a for a in student_answers if a[2] == question[0]), None)
+                    if not student_answer_record:
                         continue
+
+                    student_answer = student_answer_record[3]
 
                     system_prompt = "You are an AI trained to evaluate essay responses."
                     user_prompt = f"""
@@ -200,10 +206,29 @@ if menu == "첨삭 보고서 생성":
 """
 
                     evaluation = call_llm(system_prompt, user_prompt)
-                    st.subheader(f"문제: {question_text}")
-                    st.text_area("학생 답안", student_answer, height=100, disabled=True, key=f"eval_student_answer_{idx}")
-                    st.text_area("LLM 평가 결과", evaluation, height=150, disabled=True, key=f"eval_result_{idx}")
 
+                    if evaluation:
+                        # 평가 결과 저장
+                        try:
+                            score = int(evaluation.split("점수:")[1].split("\n")[0].strip())
+                            feedback = evaluation.split("피드백:")[1].strip()
+
+                            cursor.execute("""
+                                UPDATE student_answers
+                                SET score = ?, feedback = ?
+                                WHERE id = ?
+                            """, (score, feedback, student_answer_record[0]))
+
+                            conn.commit()
+
+                            # UI에 결과 출력
+                            st.subheader(f"문제 {idx + 1}")
+                            st.text_area("학생 답안", student_answer, height=100, disabled=True, key=f"eval_student_answer_{idx}")
+                            st.markdown(f"**LLM 평가 결과**\n점수: {score}\n피드백: {feedback}", unsafe_allow_html=True)
+
+                        except Exception as e:
+                            st.error(f"평가 결과를 저장하는 중 오류 발생: {e}")
+                conn.close()
     else:
         st.warning("학생 데이터를 추가하세요.")
 
