@@ -70,22 +70,27 @@ def init_db():
                         feedback TEXT,
                         FOREIGN KEY (student_id) REFERENCES students (id),
                         FOREIGN KEY (question_id) REFERENCES questions (id)
-                        FOREIGN KEY (passage_id) REFERENCES passages ()
                     )''')
     conn.commit()
     conn.close()
 
-    init_db()
+# 초기화 호출
+init_db()
 
-# 데이터 관리 및 답안 작성 기능
-# 데이터베이스 관련 함수
-def fetch_students():
+# Database 관련 함수
+def fetch_students(search_query=None):
     conn = sqlite3.connect("Literable.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM students")
+
+    if search_query:  # 검색 조건이 있는 경우
+        cursor.execute("SELECT * FROM students WHERE name LIKE ?", ('%' + search_query + '%',))
+    else:  # 검색 조건이 없는 경우 (모든 학생 데이터 반환)
+        cursor.execute("SELECT * FROM students")
+
     students = cursor.fetchall()
     conn.close()
     return students
+
 
 def add_student(name, school, student_number):
     conn = sqlite3.connect("Literable.db")
@@ -108,6 +113,70 @@ def delete_student(student_id):
     conn.commit()
     conn.close()
 
+def fetch_passages(search_query=""):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    if search_query:
+        cursor.execute("SELECT * FROM passages WHERE title LIKE ?", (f"%{search_query}%",))
+    else:
+        cursor.execute("SELECT * FROM passages")
+    passages = cursor.fetchall()
+    conn.close()
+    return passages
+
+# 질문 조회 함수
+def fetch_questions(passage_id):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''SELECT * FROM questions WHERE passage_id = ?''', (passage_id,))
+        questions = cursor.fetchall()
+        print(f"질문 조회 성공: passage_id={passage_id}, questions={questions}")
+        return questions
+    except Exception as e:
+        print(f"질문 조회 오류: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def add_passage(title, passage):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO passages (title, passage) VALUES (?, ?)", (title, passage))
+    passage_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return passage_id
+
+def add_question(passage_id, question, model_answer):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''INSERT INTO questions (passage_id, question, model_answer)
+                          VALUES (?, ?, ?)''', (passage_id, question, model_answer))
+        conn.commit()
+        print(f"질문 저장 성공: passage_id={passage_id}, question={question}, model_answer={model_answer}")
+    except Exception as e:
+        print(f"질문 저장 오류: {e}")
+    finally:
+        conn.close()
+
+
+def delete_passage(passage_id):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM passages WHERE id = ?", (passage_id,))
+    conn.commit()
+    conn.close()
+
+def delete_question(question_id):
+    conn = sqlite3.connect("Literable.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+    conn.commit()
+    conn.close()
+
 def fetch_table_data(table_name):
     conn = sqlite3.connect("Literable.db")
     cursor = conn.cursor()
@@ -116,67 +185,59 @@ def fetch_table_data(table_name):
     conn.close()
     return data
 
-def fetch_passages(search_query=""):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        if search_query:
-            cursor.execute("SELECT * FROM passages WHERE title LIKE ?", (f"%{search_query}%",))
-        else:
-            cursor.execute("SELECT * FROM passages")
-        passages = cursor.fetchall()
-        return passages
-    finally:
-        conn.close()
-def fetch_questions(passage_id):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM questions WHERE passage_id = ?", (passage_id,))
-        questions = cursor.fetchall()
-        return questions
-    finally:
-        conn.close()
+# PDF 생성 함수
+def generate_pdf(student_name, passage_title, evaluation_results):
+    pdfmetrics.registerFont(TTFont("NanumGothic", "NanumGothic.ttf"))
+    pdf_file = f"{student_name}_{passage_title}_첨삭결과.pdf"
+    c = canvas.Canvas(pdf_file, pagesize=letter)
+    width, height = letter
 
-def add_passage(title, passage):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO passages (title, passage) VALUES (?, ?)", (title, passage))
-        passage_id = cursor.lastrowid
-        conn.commit()
-        return passage_id
-    finally:
-        conn.close()
+    c.setFont("NanumGothic", 16)
+    c.drawString(50, height - 50, f"첨삭 결과 - {student_name}")
+    c.setFont("NanumGothic", 12)
+    c.drawString(50, height - 80, f"지문 제목: {passage_title}")
 
-def add_question(passage_id, question, model_answer):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO questions (passage_id, question, model_answer) VALUES (?, ?, ?)",
-                       (passage_id, question, model_answer))
-        conn.commit()
-    finally:
-        conn.close()
+    y = height - 120
+    for idx, result in enumerate(evaluation_results):
+        question, model_answer, student_answer, score, feedback = result
 
-def delete_passage(passage_id):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM passages WHERE id = ?", (passage_id,))
-        conn.commit()
-    finally:
-        conn.close()
+        c.setFont("NanumGothic-Bold", 12)
+        c.drawString(50, y, f"문제 {idx + 1}")
+        y -= 20
 
-def delete_question(question_id):
-    conn = sqlite3.connect("Literable.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM questions WHERE id = ?", (question_id,))
-        conn.commit()
-    finally:
-        conn.close()
+        c.setFont("NanumGothic", 10)
+        c.drawString(50, y, f"문제: {question}")
+        y -= 40
+        c.drawString(50, y, f"모범 답안: {model_answer}")
+        y -= 40
+        c.drawString(50, y, f"학생 답안: {student_answer}")
+        y -= 40
+        c.drawString(50, y, f"점수: {score}")
+        y -= 20
+        c.drawString(50, y, f"피드백: {feedback}")
+        y -= 40
 
+        if y < 100:
+            c.showPage()
+            y = height - 50
+
+    c.save()
+    return pdf_file
+
+
+# 점수 시각화 함수
+def plot_scores(evaluation_results):
+    questions = [f"문제 {i+1}" for i in range(len(evaluation_results))]
+    scores = [result[3] for result in evaluation_results]
+
+    fig, ax = plt.subplots()
+    ax.bar(questions, scores)
+    ax.set_title("학생 답안 점수")
+    ax.set_xlabel("문제")
+    ax.set_ylabel("점수")
+    st.pyplot(fig)
+
+# 학생 관리 함수
 def manage_students():
     st.subheader("학생 관리")
 
@@ -225,8 +286,8 @@ def manage_students():
     else:
         st.info("검색된 학생이 없습니다.")
 
-def manage_QA():
-
+# 지문 및 문제 관리 함수
+def manage_passages_and_questions():
     st.subheader("지문 및 문제 관리")
 
     # 세션 상태 초기화
@@ -237,7 +298,6 @@ def manage_QA():
     if 'model_answers' not in st.session_state:
         st.session_state['model_answers'] = ["" for _ in range(st.session_state['question_count'])]
 
-    # 질문 추가 및 삭제 버튼 동작
     def add_question_session():
         st.session_state['question_count'] += 1
         st.session_state['questions'].append("")
@@ -256,11 +316,13 @@ def manage_QA():
         passage = st.text_area("지문 내용")
 
         for i in range(st.session_state['question_count']):
-            st.text_input(f"질문 {i + 1}", value=st.session_state['questions'][i], key=f"question_{i}")
-            st.text_area(f"모범답안 {i + 1}", value=st.session_state['model_answers'][i], key=f"model_answer_{i}")
+            st.session_state['questions'][i] = st.text_input(
+                f"질문 {i + 1}", value=st.session_state['questions'][i], key=f"question_{i}"
+            )
+            st.session_state['model_answers'][i] = st.text_area(
+                f"모범답안 {i + 1}", value=st.session_state['model_answers'][i], key=f"model_answer_{i}"
+            )
 
-        # 질문 추가/삭제 버튼 아래로 이동
-        st.write("\n")  # Add spacing for clarity
         col1, col2 = st.columns([1, 1])
         with col1:
             st.button("질문 추가", on_click=add_question_session)
@@ -274,6 +336,7 @@ def manage_QA():
                     if question and model_answer:
                         add_question(passage_id, question, model_answer)
                 st.success("지문과 질문이 성공적으로 추가되었습니다!")
+                st.session_state["update_key"] = not st.session_state.get("update_key", False)
             else:
                 st.error("지문 제목과 내용을 입력해주세요.")
 
@@ -281,210 +344,87 @@ def manage_QA():
     search_query = st.text_input("지문 제목 검색")
     passages = fetch_passages(search_query)
 
+    # Streamlit 상태 초기화
+    if 'edit_mode' not in st.session_state:
+        st.session_state['edit_mode'] = {}
+
     if passages:
         for passage in passages:
-            with st.expander(f"제목: {passage[1]}"):
-                st.write(f"내용: {passage[2]}")
-                questions = fetch_questions(passage[0])
-                for question in questions:
-                    st.write(f"질문: {question[2]} | 모범답안: {question[3]}")
-                    if st.button("질문 삭제", key=f"delete_question_{question[0]}"):
-                        delete_question(question[0])
-                        st.experimental_rerun()
+            # 상태 초기화
+            if passage[0] not in st.session_state['edit_mode']:
+                st.session_state['edit_mode'][passage[0]] = False
 
+            with st.expander(f"제목: {passage[1]}"):
+                if st.session_state['edit_mode'][passage[0]]:
+                    # 수정 모드: 제목과 지문 내용 수정
+                    st.write("### 지문 수정")
+                    updated_title = st.text_input("지문 제목", value=passage[1], key=f"edit_title_{passage[0]}")
+                    updated_passage = st.text_area("지문 내용", value=passage[2], key=f"edit_passage_{passage[0]}")
+
+                    if st.button("수정 저장", key=f"save_passage_{passage[0]}"):
+                        if updated_title and updated_passage:
+                            conn = sqlite3.connect("Literable.db")
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "UPDATE passages SET title = ?, passage = ? WHERE id = ?",
+                                (updated_title, updated_passage, passage[0]),
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.success("지문이 성공적으로 수정되었습니다!")
+                            st.session_state['edit_mode'][passage[0]] = False  # 수정 모드 종료
+                            st.session_state["update_key"] = not st.session_state.get("update_key", False)
+                        else:
+                            st.error("제목과 내용을 모두 입력해야 합니다.")
+
+                    if st.button("수정 취소", key=f"cancel_edit_passage_{passage[0]}"):
+                        st.session_state['edit_mode'][passage[0]] = False  # 수정 모드 종료
+                else:
+                    # 조회 모드
+                    st.write(f"**내용:** {passage[2]}")
+                    questions = fetch_questions(passage[0])
+                    for question in questions:
+                        st.write(f"**질문:** {question[2]} | **모범답안:** {question[3]}")
+
+                    # 수정 버튼
+                    if st.button("수정", key=f"edit_passage_{passage[0]}"):
+                        st.session_state['edit_mode'][passage[0]] = True  # 수정 모드 활성화
+
+                # 지문 삭제 버튼
                 if st.button("지문 삭제", key=f"delete_passage_{passage[0]}"):
                     delete_passage(passage[0])
-                    st.experimental_rerun()
+                    st.success("지문이 삭제되었습니다.")
+                    st.session_state["update_key"] = not st.session_state.get("update_key", False)
     else:
         st.info("등록된 지문이 없습니다.")
 
 
-def manage_report():
-    st.subheader("답안 작성")
-    st.write("학생 답안을 입력하고 조회/수정/삭제할 수 있습니다.")
-
-    # 학생 선택
-    student_name = st.selectbox("학생 선택", ["홍길동", "김철수"])
-
-    # 질문 선택 및 답안 작성
-    question_list = ["질문 1: 환경 문제란 무엇인가?", "질문 2: 환경 문제의 원인은?"]
-    selected_question = st.selectbox("질문 선택", question_list)
-
-    # 답안 입력 및 제출
-    with st.form("submit_answer"):
-        st.text_area("학생 답안", key="student_answer")
-        st.slider("점수 입력", min_value=0, max_value=100, key="score")
-        st.text_area("피드백 입력", key="feedback")
-        submitted = st.form_submit_button("답안 제출")
-        if submitted:
-            st.success(f"{student_name} 학생의 답안이 성공적으로 저장되었습니다!")
-
-    # 기존 답안 조회 및 수정/삭제
-    st.write("### 기존 답안 목록")
-    existing_answers = [
-        {"question": "질문 1: 환경 문제란 무엇인가?", "answer": "환경 문제는 ...", "score": 90, "feedback": "좋은 답변입니다."},
-        {"question": "질문 2: 환경 문제의 원인은?", "answer": "환경 문제의 원인은 ...", "score": 85, "feedback": "구체적인 답변이 필요합니다."},
-    ]
-    for answer in existing_answers:
-        st.write(f"질문: {answer['question']}")
-        st.write(f"답안: {answer['answer']}")
-        st.write(f"점수: {answer['score']}")
-        st.write(f"피드백: {answer['feedback']}")
-        st.button(f"수정 ({answer['question']})", key=f"edit_{answer['question']}")
-        st.button(f"삭제 ({answer['question']})", key=f"delete_{answer['question']}")
-
-def add_passage(title, passage):
-    conn = sqlite3.connect("Literable.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO passages (title, passage) VALUES (?, ?)", (title, passage))
-    passage_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return passage_id
-
-def add_question(passage_id, question, model_answer):
-    conn = sqlite3.connect("Literable.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO questions (passage_id, question, model_answer) VALUES (?, ?, ?)", (passage_id, question, model_answer))
-    conn.commit()
-    conn.close()
-
-def add_student_answer(student_id, question_id, student_answer):
-    conn = sqlite3.connect("Literable.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO student_answers (student_id, question_id, student_answer) VALUES (?, ?, ?)", (student_id, question_id, student_answer))
-    conn.commit()
-    conn.close()
-
-def update_student_answer(answer_id, student_answer):
-    conn = sqlite3.connect("Literable.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE student_answers SET student_answer = ? WHERE id = ?", (student_answer, answer_id))
-    conn.commit()
-    conn.close()
-
-def delete_student_answer(answer_id):
-    conn = sqlite3.connect("Literable.db")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM student_answers WHERE id = ?", (answer_id,))
-    conn.commit()
-    conn.close()
-
-# PDF 생성 함수
-def generate_pdf(student_name, passage_title, evaluation_results):
-    pdfmetrics.registerFont(TTFont("NanumGothic", "NanumGothic.ttf"))
-    pdf_file = f"{student_name}_{passage_title}_첨삭결과.pdf"
-    c = canvas.Canvas(pdf_file, pagesize=letter)
-    width, height = letter
-
-    c.setFont("NanumGothic-Bold", 16)
-    c.drawString(50, height - 50, f"첨삭 결과 - {student_name}")
-    c.setFont("NanumGothic", 12)
-    c.drawString(50, height - 80, f"지문 제목: {passage_title}")
-
-    y = height - 120
-    for idx, result in enumerate(evaluation_results):
-        question, model_answer, student_answer, score, feedback = result
-
-        c.setFont("NanumGothic-Bold", 12)
-        c.drawString(50, y, f"문제 {idx + 1}")
-        y -= 20
-
-        c.setFont("NanumGothic", 10)
-        c.drawString(50, y, f"문제: {question}")
-        y -= 40
-        c.drawString(50, y, f"모범 답안: {model_answer}")
-        y -= 40
-        c.drawString(50, y, f"학생 답안: {student_answer}")
-        y -= 40
-        c.drawString(50, y, f"점수: {score}")
-        y -= 20
-        c.drawString(50, y, f"피드백: {feedback}")
-        y -= 40
-
-        if y < 100:
-            c.showPage()
-            y = height - 50
-
-    c.save()
-    return pdf_file
-
-
-
-# 점수 시각화 함수
-def plot_scores(evaluation_results):
-    questions = [f"문제 {i+1}" for i in range(len(evaluation_results))]
-    scores = [result[3] for result in evaluation_results]
-
-    fig, ax = plt.subplots()
-    ax.bar(questions, scores)
-    ax.set_title("학생 답안 점수")
-    ax.set_xlabel("문제")
-    ax.set_ylabel("점수")
-    st.pyplot(fig)
-
-# 첨삭 결과 및 보고서 생성
-def generate_feedback(selected_student, selected_passage):
-    questions = fetch_table_data("questions")
-    student_answers = fetch_table_data("student_answers")
-
-    relevant_questions = [q for q in questions if q[1] == selected_passage[0]]
-    relevant_answers = [a for a in student_answers if a[1] == selected_student[0]]
-
-    evaluation_results = []
-
-    for question in relevant_questions:
-        student_answer = next((a[3] for a in relevant_answers if a[2] == question[0]), None)
-        if student_answer:
-            user_prompt = "질문: {question}\n모범 답안: {model_answer}\n학생 답안: {student_answer}".format(
-                question=question[2],
-                model_answer=question[3],
-                student_answer=student_answer
-            )
-            feedback = call_llm("Evaluate the essay:", user_prompt)
-            if feedback:
-                score = int(feedback.split("점수:")[1].split("\n")[0].strip())
-                comments = feedback.split("피드백:")[1].strip()
-                evaluation_results.append((question[2], question[3], student_answer, score, comments))
-
-    return evaluation_results
+def manage_students_answer():
+    print()
 
 # Streamlit 메인
 menu = st.sidebar.radio("메뉴", ["데이터 관리 및 답안 작성", "첨삭 결과 및 보고서 생성"])
 
 if menu == "데이터 관리 및 답안 작성":
     st.header("데이터 관리 및 답안 작성")
-    tab1, tab2, tab3 = st.tabs(["학생 관리", "지문 및 문제 관리", "답안 작성"])
+    tab1, tab2, tab3 = st.tabs(["학생 관리", "지문 및 문제 관리","답안 작성"])
 
     with tab1:
         manage_students()
     with tab2:
-        manage_QA()
+        manage_passages_and_questions()
     with tab3:
-        manage_report()
+        manage_students_answer()
 
 elif menu == "첨삭 결과 및 보고서 생성":
     st.header("첨삭 결과 및 보고서 생성")
     students = fetch_students()
-    passages = fetch_table_data("passages")
+    passages = fetch_passages()
 
     if students and passages:
         selected_student = st.selectbox("학생 선택", students, format_func=lambda x: f"{x[1]} (ID: {x[0]})")
         selected_passage = st.selectbox("지문 선택", passages, format_func=lambda x: f"{x[1]} (ID: {x[0]})")
 
         if st.button("첨삭 시작"):
-            with st.spinner("AI 모델이 답안을 평가 중입니다..."):
-                evaluation_results = generate_feedback(selected_student, selected_passage)
-
-            if evaluation_results:
-                plot_scores(evaluation_results)
-                pdf_file = generate_pdf(selected_student[1], selected_passage[1], evaluation_results)
-                with open(pdf_file, "rb") as file:
-                    st.download_button(
-                        label="PDF 다운로드",
-                        data=file,
-                        file_name=pdf_file,
-                        mime="application/pdf"
-                    )
-    else:
-        st.warning("학생 또는 지문 데이터가 부족합니다.")
+            st.spinner("AI 평가 진행 중...")
+            # 평가 결과 생성 로직 추가 가능
