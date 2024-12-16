@@ -285,10 +285,9 @@ def manage_students():
                         st.warning("학생이 삭제되었습니다.")
     else:
         st.info("검색된 학생이 없습니다.")
-
 # 지문 및 문제 관리 함수
 def manage_passages_and_questions():
-    st.subheader("지문 및 문제 관리")
+    st.subheader("📚 지문 및 문제 관리")
 
     # 세션 상태 초기화
     if 'question_count' not in st.session_state:
@@ -297,13 +296,36 @@ def manage_passages_and_questions():
         st.session_state['questions'] = ["" for _ in range(st.session_state['question_count'])]
     if 'model_answers' not in st.session_state:
         st.session_state['model_answers'] = ["" for _ in range(st.session_state['question_count'])]
+    if 'edit_mode' not in st.session_state:
+        st.session_state['edit_mode'] = {}
+    # 수정 모드에서의 새 문제 추가를 위한 상태
+    if 'edit_new_questions' not in st.session_state:
+        st.session_state['edit_new_questions'] = {}
+
+    def validate_passage_input(title, passage):
+        """지문 입력 검증 함수"""
+        errors = []
+        if not title:
+            errors.append("제목을 입력해주세요.")
+        if len(title) > 100:
+            errors.append("제목은 100자 이내로 입력해주세요.")
+        if not passage:
+            errors.append("지문 내용을 입력해주세요.")
+        if len(passage) < 10:
+            errors.append("지문 내용은 최소 10자 이상이어야 합니다.")
+        return errors
 
     def add_question_session():
-        st.session_state['question_count'] += 1
-        st.session_state['questions'].append("")
-        st.session_state['model_answers'].append("")
+        """질문 입력 세션 추가"""
+        if st.session_state['question_count'] < 10:
+            st.session_state['question_count'] += 1
+            st.session_state['questions'].append("")
+            st.session_state['model_answers'].append("")
+        else:
+            st.warning("최대 10개의 질문까지만 추가할 수 있습니다.")
 
     def delete_question_session():
+        """질문 입력 세션 삭제"""
         if st.session_state['question_count'] > 1:
             st.session_state['question_count'] -= 1
             st.session_state['questions'].pop()
@@ -311,94 +333,266 @@ def manage_passages_and_questions():
         else:
             st.warning("질문 입력창이 최소 하나는 있어야 합니다!")
 
-    with st.expander("질문 및 모범답안 관리", expanded=True):
-        title = st.text_input("지문 제목")
-        passage = st.text_area("지문 내용")
+    def add_edit_question_session(passage_id):
+        """수정 모드에서 질문 추가"""
+        if passage_id not in st.session_state['edit_new_questions']:
+            st.session_state['edit_new_questions'][passage_id] = []
+        st.session_state['edit_new_questions'][passage_id].append({"question": "", "answer": ""})
 
-        for i in range(st.session_state['question_count']):
-            st.session_state['questions'][i] = st.text_input(
-                f"질문 {i + 1}", value=st.session_state['questions'][i], key=f"question_{i}"
-            )
-            st.session_state['model_answers'][i] = st.text_area(
-                f"모범답안 {i + 1}", value=st.session_state['model_answers'][i], key=f"model_answer_{i}"
-            )
+    def delete_edit_question_session(passage_id, index):
+        """수정 모드에서 새로 추가된 질문 삭제"""
+        if passage_id in st.session_state['edit_new_questions']:
+            st.session_state['edit_new_questions'][passage_id].pop(index)
 
-        col1, col2 = st.columns([1, 1])
+    def save_new_questions(passage_id):
+        """새로 추가된 질문들 저장"""
+        if passage_id in st.session_state['edit_new_questions']:
+            for q_data in st.session_state['edit_new_questions'][passage_id]:
+                if q_data["question"].strip() and q_data["answer"].strip():
+                    add_question(passage_id, q_data["question"], q_data["answer"])
+            # 저장 후 초기화
+            st.session_state['edit_new_questions'][passage_id] = []
+
+    def confirm_delete_passage(passage_id):
+        """지문 삭제 확인 모달"""
+        st.warning("🚨 정말로 이 지문을 삭제하시겠습니까?")
+        col1, col2 = st.columns(2)
         with col1:
-            st.button("질문 추가", on_click=add_question_session)
+            if st.button("✅ 예, 삭제합니다", key=f"confirm_delete_{passage_id}"):
+                delete_passage(passage_id)
+                st.success("🗑️ 지문이 삭제되었습니다.")
+                st.session_state["update_key"] = not st.session_state.get("update_key", False)
+                st.rerun()
         with col2:
-            st.button("질문 삭제", on_click=delete_question_session)
+            st.button("❌ 취소", key=f"cancel_delete_{passage_id}")
 
-        if st.button("저장"):
-            if title and passage:
+    def update_question(question_id, question_text, model_answer):
+        """질문 업데이트 함수"""
+        conn = sqlite3.connect("Literable.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE questions SET question = ?, model_answer = ? WHERE id = ?",
+            (question_text, model_answer, question_id)
+        )
+        conn.commit()
+        conn.close()
+
+    def delete_passage(passage_id):
+        """지문과 연관된 질문 모두 삭제"""
+        conn = sqlite3.connect("Literable.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM questions WHERE passage_id = ?", (passage_id,))
+        cursor.execute("DELETE FROM passages WHERE id = ?", (passage_id,))
+        conn.commit()
+        conn.close()
+
+    # 메인 섹션 - 새 지문 추가
+    with st.expander("📝 새로운 지문 및 문제 추가", expanded=True):
+        # 지문 입력
+        title = st.text_input("지문 제목", max_chars=100)
+        passage = st.text_area("지문 내용", height=200)
+
+        # 동적 질문 및 모범답안 입력
+        for i in range(st.session_state['question_count']):
+            st.divider()
+            col_q, col_a = st.columns(2)
+            with col_q:
+                st.session_state['questions'][i] = st.text_input(
+                    f"질문 {i + 1}",
+                    value=st.session_state['questions'][i],
+                    key=f"question_{i}"
+                )
+            with col_a:
+                st.session_state['model_answers'][i] = st.text_area(
+                    f"모범답안 {i + 1}",
+                    value=st.session_state['model_answers'][i],
+                    key=f"model_answer_{i}",
+                    height=100
+                )
+
+        # 질문 추가/삭제 버튼
+        col1, col2 = st.columns(2)
+        with col1:
+            st.button("➕ 질문 추가", on_click=add_question_session)
+        with col2:
+            st.button("➖ 질문 삭제", on_click=delete_question_session)
+
+        # 저장 버튼
+        if st.button("💾 지문 및 문제 저장"):
+            # 입력 검증
+            input_errors = validate_passage_input(title, passage)
+
+            if not input_errors:
+                # 지문 추가
                 passage_id = add_passage(title, passage)
-                for question, model_answer in zip(st.session_state['questions'], st.session_state['model_answers']):
-                    if question and model_answer:
-                        add_question(passage_id, question, model_answer)
-                st.success("지문과 질문이 성공적으로 추가되었습니다!")
+
+                # 질문 추가
+                valid_questions = [
+                    (q, a) for q, a in zip(st.session_state['questions'], st.session_state['model_answers'])
+                    if q.strip() and a.strip()
+                ]
+
+                for question, model_answer in valid_questions:
+                    add_question(passage_id, question, model_answer)
+
+                st.success("✅ 지문과 질문이 성공적으로 추가되었습니다!")
                 st.session_state["update_key"] = not st.session_state.get("update_key", False)
             else:
-                st.error("지문 제목과 내용을 입력해주세요.")
+                for error in input_errors:
+                    st.error(error)
 
-    st.write("### 등록된 지문 목록")
-    search_query = st.text_input("지문 제목 검색")
+    # 등록된 지문 목록
+    st.header("📋 등록된 지문 목록")
+    search_query = st.text_input("🔍 지문 검색", placeholder="제목 또는 내용으로 검색")
     passages = fetch_passages(search_query)
-
-    # Streamlit 상태 초기화
-    if 'edit_mode' not in st.session_state:
-        st.session_state['edit_mode'] = {}
 
     if passages:
         for passage in passages:
-            # 상태 초기화
-            if passage[0] not in st.session_state['edit_mode']:
-                st.session_state['edit_mode'][passage[0]] = False
+            with st.expander(f"🗂️ 제목: {passage[1]}", expanded=False):
+                if st.session_state['edit_mode'].get(passage[0], False):
+                    # 지문 수정 모드
+                    st.subheader("📝 지문 수정")
+                    updated_title = st.text_input(
+                        "지문 제목",
+                        value=passage[1],
+                        key=f"edit_title_{passage[0]}",
+                        max_chars=100
+                    )
+                    updated_passage = st.text_area(
+                        "지문 내용",
+                        value=passage[2],
+                        key=f"edit_passage_{passage[0]}",
+                        height=300
+                    )
 
-            with st.expander(f"제목: {passage[1]}"):
-                if st.session_state['edit_mode'][passage[0]]:
-                    # 수정 모드: 제목과 지문 내용 수정
-                    st.write("### 지문 수정")
-                    updated_title = st.text_input("지문 제목", value=passage[1], key=f"edit_title_{passage[0]}")
-                    updated_passage = st.text_area("지문 내용", value=passage[2], key=f"edit_passage_{passage[0]}")
+                    # 기존 문제 표시 및 수정
+                    st.subheader("📋 기존 문제 수정")
+                    questions = fetch_questions(passage[0])
+                    if questions:
+                        for question in questions:
+                            st.divider()
+                            question_edit_key = f"question_edit_{question[0]}"
+                            if question_edit_key not in st.session_state:
+                                st.session_state[question_edit_key] = False
 
-                    if st.button("수정 저장", key=f"save_passage_{passage[0]}"):
-                        if updated_title and updated_passage:
-                            conn = sqlite3.connect("Literable.db")
-                            cursor = conn.cursor()
-                            cursor.execute(
-                                "UPDATE passages SET title = ?, passage = ? WHERE id = ?",
-                                (updated_title, updated_passage, passage[0]),
+                            if st.session_state[question_edit_key]:
+                                updated_question = st.text_input(
+                                    "질문",
+                                    value=question[2],
+                                    key=f"edit_q_{question[0]}"
+                                )
+                                updated_answer = st.text_area(
+                                    "모범답안",
+                                    value=question[3],
+                                    key=f"edit_a_{question[0]}"
+                                )
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("💾 저장", key=f"save_q_{question[0]}"):
+                                        update_question(question[0], updated_question, updated_answer)
+                                        st.session_state[question_edit_key] = False
+                                        st.success("✅ 문제가 수정되었습니다!")
+                                        st.rerun()
+                                with col2:
+                                    if st.button("❌ 취소", key=f"cancel_q_{question[0]}"):
+                                        st.session_state[question_edit_key] = False
+                                        st.rerun()
+                            else:
+                                col1, col2, col3 = st.columns([3, 1, 1])
+                                with col1:
+                                    st.markdown(f"**질문:** {question[2]}")
+                                    st.markdown(f"**모범답안:** {question[3]}")
+                                with col2:
+                                    if st.button("✏️", key=f"edit_q_{question[0]}"):
+                                        st.session_state[question_edit_key] = True
+                                        st.rerun()
+                                with col3:
+                                    if st.button("🗑️", key=f"delete_q_{question[0]}"):
+                                        delete_question(question[0])
+                                        st.success("✅ 문제가 삭제되었습니다!")
+                                        st.rerun()
+
+                    # 새 문제 추가 섹션
+                    st.subheader("📝 새 문제 추가")
+                    if passage[0] not in st.session_state['edit_new_questions']:
+                        st.session_state['edit_new_questions'][passage[0]] = []
+
+                    for idx, new_q in enumerate(st.session_state['edit_new_questions'][passage[0]]):
+                        st.divider()
+                        col_q, col_a = st.columns([1, 1])
+                        with col_q:
+                            new_q["question"] = st.text_input(
+                                "새 질문",
+                                value=new_q["question"],
+                                key=f"new_q_{passage[0]}_{idx}"
                             )
-                            conn.commit()
-                            conn.close()
-                            st.success("지문이 성공적으로 수정되었습니다!")
-                            st.session_state['edit_mode'][passage[0]] = False  # 수정 모드 종료
-                            st.session_state["update_key"] = not st.session_state.get("update_key", False)
-                        else:
-                            st.error("제목과 내용을 모두 입력해야 합니다.")
+                        with col_a:
+                            new_q["answer"] = st.text_area(
+                                "새 모범답안",
+                                value=new_q["answer"],
+                                key=f"new_a_{passage[0]}_{idx}",
+                                height=100
+                            )
+                        if st.button("❌ 삭제", key=f"delete_new_q_{passage[0]}_{idx}"):
+                            delete_edit_question_session(passage[0], idx)
+                            st.rerun()
 
-                    if st.button("수정 취소", key=f"cancel_edit_passage_{passage[0]}"):
-                        st.session_state['edit_mode'][passage[0]] = False  # 수정 모드 종료
+                    if st.button("➕ 새 문제 추가", key=f"add_new_q_{passage[0]}"):
+                        add_edit_question_session(passage[0])
+                        st.rerun()
+
+                    # 저장 및 취소 버튼
+                    st.divider()
+                    col_save, col_cancel, col_delete = st.columns(3)
+                    with col_save:
+                        if st.button("💾 모든 변경사항 저장", key=f"save_all_{passage[0]}"):
+                            edit_errors = validate_passage_input(updated_title, updated_passage)
+                            if not edit_errors:
+                                # 지문 업데이트
+                                conn = sqlite3.connect("Literable.db")
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    "UPDATE passages SET title = ?, passage = ? WHERE id = ?",
+                                    (updated_title, updated_passage, passage[0]),
+                                )
+                                conn.commit()
+                                conn.close()
+                                # 새 문제 저장
+                                save_new_questions(passage[0])
+                                st.success("✅ 모든 변경사항이 저장되었습니다!")
+                                st.session_state['edit_mode'][passage[0]] = False
+                                st.rerun()
+                            else:
+                                for error in edit_errors:
+                                    st.error(error)
+
+                    with col_cancel:
+                        if st.button("❌ 수정 취소", key=f"cancel_edit_{passage[0]}"):
+                            st.session_state['edit_mode'][passage[0]] = False
+                            st.session_state['edit_new_questions'][passage[0]] = []
+                            st.rerun()
+
+                    with col_delete:
+                        if st.button("🗑️ 지문 삭제", key=f"delete_{passage[0]}"):
+                            confirm_delete_passage(passage[0])
+
                 else:
                     # 조회 모드
                     st.write(f"**내용:** {passage[2]}")
                     questions = fetch_questions(passage[0])
-                    for question in questions:
-                        st.write(f"**질문:** {question[2]} | **모범답안:** {question[3]}")
+                    if questions:
+                        st.subheader("📋 관련 문제")
+                        for question in questions:
+                            st.divider()
+                            st.markdown(f"**질문:** {question[2]}")
+                            st.markdown(f"**모범답안:** {question[3]}")
 
-                    # 수정 버튼
-                    if st.button("수정", key=f"edit_passage_{passage[0]}"):
-                        st.session_state['edit_mode'][passage[0]] = True  # 수정 모드 활성화
-
-                # 지문 삭제 버튼
-                if st.button("지문 삭제", key=f"delete_passage_{passage[0]}"):
-                    delete_passage(passage[0])
-                    st.success("지문이 삭제되었습니다.")
-                    st.session_state["update_key"] = not st.session_state.get("update_key", False)
+                    st.divider()
+                    if st.button("✏️ 지문 수정", key=f"edit_{passage[0]}"):
+                        st.session_state['edit_mode'][passage[0]] = True
+                        st.rerun()
     else:
-        st.info("등록된 지문이 없습니다.")
-
-
+        st.info("📭 등록된 지문이 없습니다.")
 def manage_students_answer():
     print()
 
