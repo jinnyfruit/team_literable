@@ -387,7 +387,7 @@ if menu == "첨삭 보고서 생성":
                     conn = sqlite3.connect("Literable.db")
                     cursor = conn.cursor()
 
-                    prompt_template = load_prompt("prompt1.txt")
+                    prompt_template = load_prompt("prompt.txt")
                     if not prompt_template:
                         st.error("Prompt 템플릿을 로드하지 못했습니다.")
                         conn.close()
