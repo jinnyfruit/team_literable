@@ -2,7 +2,6 @@ import streamlit as st
 from database_manager import db
 from typing import List, Tuple, Dict, Any
 
-
 def manage_students():
     """학생 관리 UI 컴포넌트"""
     st.subheader("학생 관리")
@@ -56,10 +55,14 @@ def manage_students():
     else:
         st.info("검색된 학생이 없습니다.")
 
-
 def manage_passages_and_questions():
     """지문 및 문제 관리 UI 컴포넌트"""
     st.subheader("📚 지문 및 문제 관리")
+
+    # 카테고리 목록 정의
+    CATEGORIES = [
+        '사실적 독해','추론적 독해','비판적 독해', '창의적 독해'
+    ]
 
     # 세션 상태 초기화
     if 'question_count' not in st.session_state:
@@ -101,7 +104,7 @@ def manage_passages_and_questions():
 
         for i in range(st.session_state['question_count']):
             st.divider()
-            col_q, col_a = st.columns(2)
+            col_q, col_a, col_c = st.columns(3)
             with col_q:
                 st.session_state['questions'][i] = st.text_input(
                     f"질문 {i + 1}",
@@ -115,6 +118,12 @@ def manage_passages_and_questions():
                     key=f"model_answer_{i}",
                     height=100
                 )
+            with col_c:
+                st.session_state[f'question_category_{i}'] = st.selectbox(
+                    f"카테고리 {i + 1}",
+                    CATEGORIES,
+                    key=f"category_{i}"
+                )
 
         col1, col2 = st.columns(2)
         with col1:
@@ -122,15 +131,22 @@ def manage_passages_and_questions():
         with col2:
             st.button("➖ 질문 삭제", on_click=delete_question_session)
 
+        # 지문 및 문제 저장 시 카테고리 포함
         if st.button("💾 지문 및 문제 저장"):
             if title and passage:
                 passage_id = db.add_passage(title, passage)
                 valid_questions = [
-                    (q, a) for q, a in zip(st.session_state['questions'], st.session_state['model_answers'])
+                    (q, a, cat) for q, a, cat in zip(
+                        st.session_state['questions'],
+                        st.session_state['model_answers'],
+                        [st.session_state.get(f'question_category_{i}', '기타') for i in
+                         range(st.session_state['question_count'])]
+                    )
                     if q.strip() and a.strip()
                 ]
-                for question, model_answer in valid_questions:
-                    db.add_question(passage_id, question, model_answer)
+                for question, model_answer, category in valid_questions:
+                    db.add_question(passage_id, question, model_answer, category)
+
                 st.success("✅ 지문과 질문이 성공적으로 추가되었습니다!")
                 st.session_state['questions'] = ["" for _ in range(st.session_state['question_count'])]
                 st.session_state['model_answers'] = ["" for _ in range(st.session_state['question_count'])]
@@ -207,11 +223,23 @@ def manage_passages_and_questions():
                             value=question[3],
                             key=f"edit_answer_input_{question[0]}"
                         )
+                        # 카테고리 선택 위젯 추가
+                        updated_category = st.selectbox(
+                            "카테고리 선택",
+                            CATEGORIES,
+                            index=CATEGORIES.index(question[4]) if question[4] in CATEGORIES else 0,
+                            key=f"edit_category_input_{question[0]}"
+                        )
 
                         col1, col2 = st.columns(2)
                         with col1:
                             if st.button("💾 저장", key=f"save_question_{question[0]}"):
-                                db.update_question(question[0], updated_question, updated_answer)
+                                db.update_question(
+                                    question[0],
+                                    updated_question,
+                                    updated_answer,
+                                    updated_category
+                                )
                                 st.success("✅ 문제가 수정되었습니다!")
                                 st.session_state[question_edit_key] = False
                                 st.rerun()
@@ -225,6 +253,7 @@ def manage_passages_and_questions():
                         with col1:
                             st.markdown(f"**질문:** {question[2]}")
                             st.markdown(f"**모범답안:** {question[3]}")
+                            st.markdown(f"**카테고리:** {question[4] or '기타'}")  # 카테고리 표시 추가
                         with col2:
                             if st.button("✏️", key=f"edit_question_button_{question[0]}"):
                                 st.session_state[question_edit_key] = True
@@ -238,15 +267,26 @@ def manage_passages_and_questions():
             # 새 질문 추가 섹션
             st.divider()
             st.subheader("➕ 새 질문 추가")
-            col_q, col_a = st.columns(2)
+            col_q, col_a, col_c = st.columns(3)
             with col_q:
                 new_question = st.text_input("새 질문", key=f"new_question_{passage[0]}")
             with col_a:
                 new_answer = st.text_area("새 모범답안", key=f"new_answer_{passage[0]}")
+            with col_c:
+                new_category = st.selectbox(
+                    "카테고리 선택",
+                    CATEGORIES,
+                    key=f"new_category_{passage[0]}"
+                )
 
             if st.button("💾 질문 추가", key=f"add_question_{passage[0]}"):
                 if new_question.strip() and new_answer.strip():
-                    db.add_question(passage[0], new_question, new_answer)
+                    db.add_question(
+                        passage[0],
+                        new_question,
+                        new_answer,
+                        category=new_category
+                    )
                     st.success("✅ 새로운 문제가 추가되었습니다!")
                     st.rerun()
                 else:
@@ -320,7 +360,7 @@ def manage_report():
         selected_passage = st.selectbox(
             "지문 선택",
             passages,
-            format_func=lambda x: x[1],  # 지문 제목만 표시
+            format_func=lambda x: x[1],
             key="passage_select"
         )
 
@@ -336,12 +376,11 @@ def manage_report():
 
     # 선택된 학생의 답안들 가져오기
     existing_answers = db.fetch_student_answers(selected_student[0], selected_passage[0])
-    existing_answers_dict = {answer[2]: answer for answer in existing_answers}  # question_id를 키로 사용
+    existing_answers_dict = {answer[2]: answer for answer in existing_answers}
 
     # 답안 관리 섹션
     st.write("### 답안 입력 및 수정")
 
-    # 전체 답안 상태 표시
     total_questions = len(questions)
     answered_questions = len(existing_answers)
     st.write(f"답안 작성 현황: {answered_questions}/{total_questions} 문제 완료")
@@ -349,8 +388,7 @@ def manage_report():
     st.progress(progress)
 
     for question in questions:
-        with st.expander(f"문제: {question[2]}", expanded=True):
-            # 기존 답안이 있는 경우
+        with st.expander(f"문제: {question[2]} (분류: {question[4]})", expanded=True):
             existing_answer = existing_answers_dict.get(question[0])
 
             col1, col2 = st.columns([3, 1])
@@ -363,7 +401,6 @@ def manage_report():
                     st.write("**현재 점수:**")
                     st.info(f"{existing_answer[4]}점")
 
-            # 답안 입력/수정 폼
             with st.form(key=f"answer_form_{question[0]}"):
                 student_answer = st.text_area(
                     "학생 답안",
@@ -394,19 +431,31 @@ def manage_report():
                         delete = st.form_submit_button("삭제", type="secondary")
 
                 if submit and student_answer:
-                    db.save_student_answer(
-                        selected_student[0],
-                        question[0],
-                        student_answer,
-                        score,
-                        feedback
-                    )
-                    st.success("답안이 성공적으로 저장되었습니다!")
-                    st.rerun()
+                    if existing_answer:
+                        # 기존 답안 수정
+                        db.save_student_answer(
+                            selected_student[0],
+                            question[0],
+                            student_answer,
+                            score,
+                            feedback
+                        )
+                        st.success("답안이 성공적으로 수정되었습니다!")
+                    else:
+                        # 새로운 답안 추가
+                        db.save_student_answer(
+                            selected_student[0],
+                            question[0],
+                            student_answer,
+                            score,
+                            feedback
+                        )
+                        st.success("답안이 성공적으로 저장되었습니다!")
+                    st.write("### 변경사항이 저장되었습니다. 새로고침 해주세요.")
+
                 elif submit and not student_answer:
                     st.error("답안을 입력해주세요.")
 
                 if existing_answer and delete:
                     db.delete_student_answer(existing_answer[0])
-                    st.warning("답안이 삭제되었습니다.")
-                    st.rerun()
+                    st.warning("답안이 삭제되었습니다. 새로고침 해주세요.")

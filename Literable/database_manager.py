@@ -1,8 +1,5 @@
 import sqlite3
 from typing import List, Tuple, Optional, Dict, Any
-import streamlit as st
-from datetime import datetime
-
 
 class DatabaseManager:
     def __init__(self, db_name: str = "Literable.db"):
@@ -38,6 +35,7 @@ class DatabaseManager:
                         passage_id INTEGER,
                         question TEXT,
                         model_answer TEXT,
+                        category TEXT DEFAULT '',
                         FOREIGN KEY (passage_id) REFERENCES passages (id)
                     )''')
 
@@ -50,6 +48,7 @@ class DatabaseManager:
                         score INTEGER,
                         feedback TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(student_id, question_id), 
                         FOREIGN KEY (student_id) REFERENCES students (id),
                         FOREIGN KEY (question_id) REFERENCES questions (id)
                     )''')
@@ -161,23 +160,23 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def add_question(self, passage_id: int, question: str, model_answer: str) -> None:
+    def add_question(self, passage_id: int, question: str, model_answer: str, category: str) -> None:
         """Add a new question to database"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute('''INSERT INTO questions (passage_id, question, model_answer)
-                            VALUES (?, ?, ?)''', (passage_id, question, model_answer))
+            cursor.execute('''INSERT INTO questions (passage_id, question, model_answer, category)
+                            VALUES (?, ?, ?, ?)''', (passage_id, question, model_answer, category))
             conn.commit()
         finally:
             conn.close()
 
-    def update_question(self, question_id: int, question: str, model_answer: str) -> None:
+    def update_question(self, question_id: int, question: str, model_answer: str, category: str) -> None:
         """Update existing question"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE questions SET question = ?, model_answer = ? WHERE id = ?",
-                       (question, model_answer, question_id))
+        cursor.execute("UPDATE questions SET question = ?, model_answer = ?, category = ? WHERE id = ?",
+                       (question, model_answer, category, question_id))
         conn.commit()
         conn.close()
 
@@ -213,19 +212,25 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT INTO student_answers 
-            (student_id, question_id, student_answer, score, feedback, created_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(student_id, question_id) DO UPDATE SET
-            student_answer = excluded.student_answer,
-            score = excluded.score,
-            feedback = excluded.feedback,
-            created_at = CURRENT_TIMESTAMP
-        """, (student_id, question_id, answer, score, feedback))
+        try:
+            # 기존 답안 확인 후 업데이트 또는 새로 추가
+            cursor.execute("""
+                INSERT INTO student_answers 
+                (student_id, question_id, student_answer, score, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(student_id, question_id) DO UPDATE SET
+                student_answer = ?,
+                score = ?,
+                feedback = ?,
+                created_at = CURRENT_TIMESTAMP
+            """, (student_id, question_id, answer, score, feedback,
+                  answer, score, feedback))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        except sqlite3.Error as e:
+            st.error(f"데이터베이스 오류: {e}")
+        finally:
+            conn.close()
 
     def delete_student_answer(self, answer_id: int) -> None:
         """Delete a student answer"""
@@ -335,7 +340,6 @@ class DatabaseManager:
             }
             for stat in stats
         ]
-
 
 # Create a global instance
 db = DatabaseManager()
