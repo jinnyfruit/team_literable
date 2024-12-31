@@ -1,9 +1,9 @@
-import streamlit as st
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
+import streamlit as st
+import pdfkit
 from typing import List, Tuple
 
 def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) -> bytes:
@@ -77,113 +77,166 @@ def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) ->
     buffer.close()
     return pdf_data
 
+def get_question_type_icon(question_text: str) -> str:
+    """문제 유형에 따른 아이콘 반환"""
+    if '사실적' in question_text:
+        return '㖐 사실적 독해'
+    elif '비판적' in question_text:
+        return '㖐 비판적 독해'
+    elif '추론적' in question_text:
+        return '㖐 추론적 독해'
+    elif '창의적' in question_text:
+        return '㖐 창의적 독해'
+    return ''
+
 def format_feedback_report(student: Tuple, passage: Tuple, results: List[Tuple]) -> str:
-    """첨삭 보고서 HTML 형식 생성"""
-    report_html = f"""
-    <div class="report-container">
-        <div class="report-header">
-            <h2 class="passage-title">{passage[1]}</h2>
-            <div class="student-info">
-                <p><strong>학생명:</strong> {student[1]}</p>
-                <p><strong>학교:</strong> {student[2]}</p>
-                <p><strong>학번:</strong> {student[3]}</p>
-            </div>
-        </div>
-
-        <div class="report-summary">
-            <h3>종합 평가</h3>
-            <p>총 문항: {len(results)}개</p>
-            <p>평균 점수: {sum(r[3] for r in results) / len(results):.1f}점</p>
-        </div>
-
+    """리터러블 스타일의 PDF 보고서 생성"""
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
         <style>
-            .report-container {{
-                padding: 20px;
-                max-width: 1200px;
-                margin: 0 auto;
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+            body {{
+                font-family: 'Noto Sans KR', sans-serif;
+                margin: 0;
+                padding: 40px;
+                color: #333;
             }}
-            .report-header {{
+            .header {{
                 text-align: center;
-                margin-bottom: 30px;
-                padding: 20px;
-                background: #f8f9fa;
-                border-radius: 10px;
-            }}
-            .passage-title {{
-                color: #2c3e50;
                 margin-bottom: 20px;
             }}
-            .student-info {{
-                display: flex;
-                justify-content: space-around;
-                margin-top: 20px;
+            .title {{
+                font-size: 24px;
+                font-weight: bold;
+                margin: 0;
+                color: #2c3e50;
             }}
-            .student-info p {{
+            .subtitle {{
+                font-size: 18px;
+                margin: 10px 0;
+                color: #34495e;
+            }}
+            .info-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }}
+            .info-table td {{
+                padding: 8px;
+                border: none;
+            }}
+            .question-section {{
+                margin: 30px 0;
+            }}
+            .question-header {{
+                display: flex;
+                align-items: center;
+                margin-bottom: 15px;
+            }}
+            .question-type {{
+                color: #2980b9;
+                font-weight: bold;
+                margin-right: 10px;
+            }}
+            .score {{
+                color: #2980b9;
+                font-weight: bold;
+            }}
+            .content-section {{
+                margin: 15px 0;
+            }}
+            .content-title {{
+                font-weight: bold;
+                margin-bottom: 5px;
+            }}
+            .content-box {{
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 15px;
+            }}
+            @page {{
+                size: A4;
                 margin: 0;
             }}
-            .report-summary {{
-                margin: 20px 0;
-                padding: 15px;
-                background: #e9ecef;
-                border-radius: 8px;
-            }}
-            .question-card {{
-                margin: 20px 0;
-                padding: 20px;
-                border: 1px solid #dee2e6;
-                border-radius: 10px;
-                position: relative;
-            }}
-            .score-badge {{
-                position: absolute;
-                top: 20px;
-                right: 20px;
-                background: #007bff;
-                color: white;
-                padding: 10px 20px;
-                border-radius: 20px;
-                font-size: 1.2em;
-            }}
-            .answer-section {{
-                margin: 15px 0;
-                padding: 15px;
-                background: #f8f9fa;
-                border-radius: 5px;
-            }}
-            .feedback-section {{
-                margin-top: 15px;
-                padding: 15px;
-                background: #e9ecef;
-                border-radius: 5px;
-            }}
         </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1 class="title">리터러블 문해력 솔루션 보고서</h1>
+            <p class="subtitle">Literable 리터러블</p>
+        </div>
+
+        <table class="info-table">
+            <tr>
+                <td>솔루션 일시: {student[4] if len(student) > 4 else '2024년 12월 24일'}</td>
+                <td>성명: {student[1]}</td>
+                <td>학년: {student[2]} {student[3]}</td>
+                <td>총점: {sum(r[3] for r in results)}/{len(results) * 5}점</td>
+            </tr>
+        </table>
     """
 
-    for i, result in enumerate(results, 1):
+    # 지문 내용 추가
+    html_content += f"""
+        <div class="content-section">
+            {passage[2]}
+        </div>
+    """
+
+    # 각 문제별 분석
+    for idx, result in enumerate(results, 1):
         question, model_answer, student_answer, score, feedback = result
-        report_html += f"""
-        <div class="question-card">
-            <div class="score-badge">{score}점</div>
+        question_type = get_question_type_icon(question)
 
-            <h4>문제</h4>
-            <p>{question}</p>
-
-            <div class="answer-section">
-                <h5>모범답안</h5>
-                <p>{model_answer}</p>
+        html_content += f"""
+        <div class="question-section">
+            <div class="question-header">
+                <span class="question-type">질문 {idx} {question_type}</span>
+                <span class="score">{score}점 / 5점</span>
             </div>
 
-            <div class="answer-section">
-                <h5>학생답안</h5>
+            <div class="content-box">
+                <div class="content-title">1. 학생 답변</div>
                 <p>{student_answer}</p>
             </div>
 
-            <div class="feedback-section">
-                <h5>첨삭 내용</h5>
+            <div class="content-box">
+                <div class="content-title">2. 모범 답안</div>
+                <p>{model_answer}</p>
+            </div>
+
+            <div class="content-box">
+                <div class="content-title">3. 첨삭</div>
                 <p>{feedback}</p>
             </div>
         </div>
         """
 
-    report_html += "</div>"
-    return report_html
+    html_content += """
+    </body>
+    </html>
+    """
+
+    # PDF 옵션 설정
+    options = {
+        'page-size': 'A4',
+        'margin-top': '15mm',
+        'margin-right': '15mm',
+        'margin-bottom': '15mm',
+        'margin-left': '15mm',
+        'encoding': 'UTF-8',
+        'no-outline': None,
+        'enable-local-file-access': None
+    }
+
+    try:
+        # HTML을 PDF로 변환
+        pdf_data = pdfkit.from_string(html_content, False, options=options)
+        return pdf_data
+    except Exception as e:
+        st.error(f"PDF 생성 중 오류가 발생했습니다: {str(e)}")
+        return None

@@ -324,7 +324,7 @@ def manage_passages_and_questions():
 
 def manage_report():
     """답안 관리 UI 컴포넌트"""
-    st.subheader("답안 관리")
+    st.subheader("📝 답안 관리")
 
     # 학생 검색 및 선택
     st.write("### 학생 선택")
@@ -414,13 +414,15 @@ def manage_report():
                         "점수",
                         min_value=0,
                         max_value=100,
-                        value=existing_answer[4] if existing_answer else 0
+                        value=existing_answer[4] if existing_answer else 0,
+                        key=f"score_input_{question[0]}"
                     )
                 with col2:
                     feedback = st.text_area(
                         "피드백",
                         value=existing_answer[5] if existing_answer else "",
-                        height=100
+                        height=100,
+                        key=f"feedback_input_{question[0]}"
                     )
 
                 col1, col2, col3 = st.columns([1, 1, 2])
@@ -431,31 +433,41 @@ def manage_report():
                         delete = st.form_submit_button("삭제", type="secondary")
 
                 if submit and student_answer:
-                    if existing_answer:
-                        # 기존 답안 수정
-                        db.save_student_answer(
-                            selected_student[0],
-                            question[0],
-                            student_answer,
-                            score,
-                            feedback
-                        )
-                        st.success("답안이 성공적으로 수정되었습니다!")
-                    else:
-                        # 새로운 답안 추가
-                        db.save_student_answer(
-                            selected_student[0],
-                            question[0],
-                            student_answer,
-                            score,
-                            feedback
-                        )
-                        st.success("답안이 성공적으로 저장되었습니다!")
-                    st.write("### 변경사항이 저장되었습니다. 새로고침 해주세요.")
+                    try:
+                        if existing_answer:
+                            # 기존 답안 수정
+                            db.save_student_answer(
+                                selected_student[0],
+                                question[0],
+                                student_answer,
+                                score,
+                                feedback
+                            )
+                            st.success("답안이 성공적으로 수정되었습니다!")
+                        else:
+                            # 새로운 답안 추가
+                            db.save_student_answer(
+                                selected_student[0],
+                                question[0],
+                                student_answer,
+                                score,
+                                feedback
+                            )
+                            st.success("답안이 성공적으로 저장되었습니다!")
+
+                        # 상태 새로고침
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"저장 중 오류가 발생했습니다: {e}")
 
                 elif submit and not student_answer:
                     st.error("답안을 입력해주세요.")
 
                 if existing_answer and delete:
-                    db.delete_student_answer(existing_answer[0])
-                    st.warning("답안이 삭제되었습니다. 새로고침 해주세요.")
+                    try:
+                        db.delete_student_answer(existing_answer[0])
+                        st.warning("답안이 삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"삭제 중 오류가 발생했습니다: {e}")

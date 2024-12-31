@@ -1,5 +1,6 @@
 import sqlite3
 from typing import List, Tuple, Optional, Dict, Any
+import streamlit as st
 
 class DatabaseManager:
     def __init__(self, db_name: str = "Literable.db"):
@@ -192,43 +193,94 @@ class DatabaseManager:
         conn.close()
 
     # Student Answer related methods
-    def fetch_student_answers(self, student_id: int, passage_id: int) -> List[Tuple]:
-        """Fetch answers for a specific student and passage"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT sa.*, q.question, q.model_answer 
-            FROM student_answers sa 
-            JOIN questions q ON sa.question_id = q.id 
-            WHERE sa.student_id = ? AND q.passage_id = ?
-        """, (student_id, passage_id))
-        answers = cursor.fetchall()
-        conn.close()
-        return answers
-
-    def save_student_answer(self, student_id: int, question_id: int,
-                            answer: str, score: int, feedback: str) -> None:
-        """Save or update student answer"""
+    def fetch_student_answers(self, student_id: int, passage_id: Optional[int] = None) -> List[Tuple]:
+        """학생 답안 조회 함수 수정"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            # 기존 답안 확인 후 업데이트 또는 새로 추가
+            if passage_id is not None:
+                # 특정 지문에 대한 답안 조회
+                cursor.execute("""
+                    SELECT sa.id, sa.student_id, sa.question_id, sa.student_answer, 
+                           sa.score, sa.feedback, sa.created_at
+                    FROM student_answers sa
+                    JOIN questions q ON sa.question_id = q.id
+                    WHERE sa.student_id = ? AND q.passage_id = ?
+                    ORDER BY q.id
+                """, (student_id, passage_id))
+            else:
+                # 모든 답안 조회 (답안이 있는 경우만)
+                cursor.execute("""
+                    SELECT DISTINCT sa.id, sa.student_id, sa.question_id, sa.student_answer,
+                           sa.score, sa.feedback, sa.created_at
+                    FROM student_answers sa
+                    WHERE sa.student_id = ? AND sa.score IS NOT NULL
+                    ORDER BY sa.created_at DESC
+                """, (student_id,))
+
+            return cursor.fetchall()
+        except sqlite3.Error as e:
+            print(f"Error fetching student answers: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def save_student_answer(self, student_id: int, question_id: int,
+                            answer: str, score: int, feedback: str) -> bool:
+        """학생 답안 저장 함수 수정"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # UPSERT 구문 사용하여 저장 또는 업데이트
             cursor.execute("""
                 INSERT INTO student_answers 
                 (student_id, question_id, student_answer, score, feedback, created_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(student_id, question_id) DO UPDATE SET
-                student_answer = ?,
-                score = ?,
-                feedback = ?,
-                created_at = CURRENT_TIMESTAMP
-            """, (student_id, question_id, answer, score, feedback,
-                  answer, score, feedback))
+                ON CONFLICT(student_id, question_id) 
+                DO UPDATE SET
+                    student_answer = excluded.student_answer,
+                    score = excluded.score,
+                    feedback = excluded.feedback,
+                    created_at = CURRENT_TIMESTAMP
+                WHERE student_id = ? AND question_id = ?
+            """, (student_id, question_id, answer, score, feedback, student_id, question_id))
 
             conn.commit()
+            return True
         except sqlite3.Error as e:
-            st.error(f"데이터베이스 오류: {e}")
+            print(f"Error saving student answer: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def save_student_answer(self, student_id: int, question_id: int,
+                            answer: str, score: int, feedback: str) -> bool:
+        """학생 답안 저장 함수 수정"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # UPSERT 구문 사용하여 저장 또는 업데이트
+            cursor.execute("""
+                INSERT INTO student_answers 
+                (student_id, question_id, student_answer, score, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(student_id, question_id) 
+                DO UPDATE SET
+                    student_answer = excluded.student_answer,
+                    score = excluded.score,
+                    feedback = excluded.feedback,
+                    created_at = CURRENT_TIMESTAMP
+                WHERE student_id = ? AND question_id = ?
+            """, (student_id, question_id, answer, score, feedback, student_id, question_id))
+
+            conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error saving student answer: {e}")
+            return False
         finally:
             conn.close()
 
@@ -277,6 +329,26 @@ class DatabaseManager:
             'total_answers': total_answers,
             'grade_distribution': grade_distribution
         }
+
+    def get_student_with_answers(self) -> List[Tuple]:
+        """답안이 있는 학생만 조회하는 새로운 함수"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT DISTINCT s.* 
+                FROM students s
+                JOIN student_answers sa ON s.id = sa.student_id
+                WHERE sa.score IS NOT NULL
+                ORDER BY s.name
+            """)
+            return cursor.fetchall()
+        except sqlite3.Error as e:
+            print(f"Error fetching students with answers: {e}")
+            return []
+        finally:
+            conn.close()
 
     def get_student_statistics(self, student_id: int) -> Dict[str, Any]:
         """Get statistics for a specific student"""
