@@ -202,19 +202,36 @@ class DatabaseManager:
             if passage_id is not None:
                 # 특정 지문에 대한 답안 조회
                 cursor.execute("""
-                    SELECT sa.id, sa.student_id, sa.question_id, sa.student_answer, 
-                           sa.score, sa.feedback, sa.created_at
-                    FROM student_answers sa
-                    JOIN questions q ON sa.question_id = q.id
-                    WHERE sa.student_id = ? AND q.passage_id = ?
+                    SELECT 
+                        sa.id, 
+                        sa.student_id, 
+                        sa.question_id, 
+                        sa.student_answer, 
+                        COALESCE(sa.score, 0) as score,
+                        COALESCE(sa.feedback, '') as feedback,
+                        sa.created_at,
+                        q.question, 
+                        q.model_answer
+                    FROM questions q
+                    LEFT JOIN student_answers sa ON q.id = sa.question_id AND sa.student_id = ?
+                    WHERE q.passage_id = ?
                     ORDER BY q.id
                 """, (student_id, passage_id))
             else:
-                # 모든 답안 조회 (답안이 있는 경우만)
+                # 모든 답안 조회 (답안이 있는 것만)
                 cursor.execute("""
-                    SELECT DISTINCT sa.id, sa.student_id, sa.question_id, sa.student_answer,
-                           sa.score, sa.feedback, sa.created_at
+                    SELECT 
+                        sa.id, 
+                        sa.student_id, 
+                        sa.question_id, 
+                        sa.student_answer,
+                        COALESCE(sa.score, 0) as score,
+                        COALESCE(sa.feedback, '') as feedback,
+                        sa.created_at,
+                        q.question, 
+                        q.model_answer
                     FROM student_answers sa
+                    JOIN questions q ON sa.question_id = q.id
                     WHERE sa.student_id = ? AND sa.score IS NOT NULL
                     ORDER BY sa.created_at DESC
                 """, (student_id,))
@@ -226,60 +243,43 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def save_student_answer(self, student_id: int, question_id: int,
-                            answer: str, score: int, feedback: str) -> bool:
-        """학생 답안 저장 함수 수정"""
+    def save_student_answer(self, student_id: int, question_id: int, answer: str, score: int, feedback: str) -> bool:
+        """Save or update a student's answer in the database."""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            # UPSERT 구문 사용하여 저장 또는 업데이트
+            # 기존 답안이 있는지 확인
             cursor.execute("""
-                INSERT INTO student_answers 
-                (student_id, question_id, student_answer, score, feedback, created_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(student_id, question_id) 
-                DO UPDATE SET
-                    student_answer = excluded.student_answer,
-                    score = excluded.score,
-                    feedback = excluded.feedback,
-                    created_at = CURRENT_TIMESTAMP
+                SELECT id FROM student_answers 
                 WHERE student_id = ? AND question_id = ?
-            """, (student_id, question_id, answer, score, feedback, student_id, question_id))
+            """, (student_id, question_id))
+
+            existing_answer = cursor.fetchone()
+
+            if existing_answer:
+                # 기존 답안이 있으면 UPDATE
+                cursor.execute("""
+                    UPDATE student_answers 
+                    SET student_answer = ?, 
+                        score = ?, 
+                        feedback = ?, 
+                        created_at = CURRENT_TIMESTAMP
+                    WHERE student_id = ? AND question_id = ?
+                """, (answer, score, feedback, student_id, question_id))
+            else:
+                # 새로운 답안이면 INSERT
+                cursor.execute("""
+                    INSERT INTO student_answers 
+                    (student_id, question_id, student_answer, score, feedback, created_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (student_id, question_id, answer, score, feedback))
 
             conn.commit()
             return True
         except sqlite3.Error as e:
             print(f"Error saving student answer: {e}")
-            return False
-        finally:
-            conn.close()
-
-    def save_student_answer(self, student_id: int, question_id: int,
-                            answer: str, score: int, feedback: str) -> bool:
-        """학생 답안 저장 함수 수정"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        try:
-            # UPSERT 구문 사용하여 저장 또는 업데이트
-            cursor.execute("""
-                INSERT INTO student_answers 
-                (student_id, question_id, student_answer, score, feedback, created_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(student_id, question_id) 
-                DO UPDATE SET
-                    student_answer = excluded.student_answer,
-                    score = excluded.score,
-                    feedback = excluded.feedback,
-                    created_at = CURRENT_TIMESTAMP
-                WHERE student_id = ? AND question_id = ?
-            """, (student_id, question_id, answer, score, feedback, student_id, question_id))
-
-            conn.commit()
-            return True
-        except sqlite3.Error as e:
-            print(f"Error saving student answer: {e}")
+            conn.rollback()
             return False
         finally:
             conn.close()

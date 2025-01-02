@@ -139,6 +139,7 @@ def show_passage_statistics():
 
             # 막대 그래프
             plt.subplot(1, 2, 1)
+
             bars = plt.bar(range(1, len(df) + 1), df['average_score'])
             plt.title('문제별 평균 점수')
             plt.xlabel('문제 번호')
