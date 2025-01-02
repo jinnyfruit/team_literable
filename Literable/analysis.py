@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 from components import generate_pdf_report, format_feedback_report
 
+
 # GPT-4 API 설정
 # GPT-4o API 설정
 FN_CALL_KEY = "5acf6c1d1aed44eaa670dd059c8c84ce"
@@ -298,19 +299,7 @@ def show_detailed_analysis():
                             ))
 
                     if formatted_results:
-                        # PDF 다운로드 버튼
-                        col1, col2 = st.columns([1, 5])
-                        with col1:
-                            pdf_data = generate_pdf_report(selected_student, selected_passage, formatted_results)
-                            if pdf_data:
-                                st.download_button(
-                                    label="📑 PDF 저장",
-                                    data=pdf_data,
-                                    file_name=f"{selected_student[1]}_{selected_passage[1]}_첨삭보고서.pdf",
-                                    mime="application/pdf"
-                                )
-
-                        # 결과 표시
+                        # Display results with feedback
                         for idx, result in enumerate(formatted_results, 1):
                             question, model_answer, student_answer, score, feedback = result
                             with st.expander(f"문제 {idx}", expanded=True):
@@ -337,6 +326,16 @@ def show_detailed_analysis():
                             value=f"{total_score}점",
                             delta=f"평균: {avg_score:.1f}점"
                         )
+
+                        # PDF 다운로드 버튼
+                        pdf_data = generate_pdf_report(selected_student, selected_passage, formatted_results)
+                        if pdf_data:
+                            st.download_button(
+                                label="📑 PDF 저장",
+                                data=pdf_data,
+                                file_name=f"{selected_student[1]}_{selected_passage[1]}_첨삭보고서.pdf",
+                                mime="application/pdf"
+                            )
 
                 else:
                     st.info("분석된 답안이 없습니다.")

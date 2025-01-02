@@ -4,10 +4,21 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
 import streamlit as st
 import pdfkit
+from reportlab.lib import colors
 from typing import List, Tuple
+from datetime import datetime
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+from io import BytesIO
+from datetime import datetime
 
 def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) -> bytes:
-    """PDF 보고서 생성"""
+    """PDF 보고서 생성 - 한글 출력 에러 방지"""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -23,6 +34,7 @@ def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) ->
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
+        fontName='Helvetica',
         fontSize=16,
         spaceAfter=30,
         alignment=1
@@ -30,44 +42,75 @@ def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) ->
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
+        fontName='Helvetica',
         fontSize=14,
         spaceAfter=12
     )
     normal_style = ParagraphStyle(
         'CustomNormal',
         parent=styles['Normal'],
-        fontSize=10
+        fontName='Helvetica',
+        fontSize=10,
+        leading=14
     )
 
     # 문서 요소 생성
     elements = []
 
-    # 제목 및 학생 정보
-    elements.append(Paragraph(passage[1], title_style))
+    # 제목
+    elements.append(Paragraph("리터러블 문해력 솔루션 보고서", title_style))
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph(f"학생명: {student[1]}", normal_style))
-    elements.append(Paragraph(f"학교: {student[2]}", normal_style))
-    elements.append(Paragraph(f"학번: {student[3]}", normal_style))
+
+    # 학생 정보
+    current_date = datetime.now().strftime("%Y년 %m월 %d일")
+    student_info = [
+        ["솔루션 일시", current_date],
+        ["학생명", student[1]],
+        ["학년", f"{student[2]} {student[3]}"],
+        ["총점", f"{sum(r[3] for r in results)}/{len(results) * 5}"]
+    ]
+    table = Table(student_info, colWidths=[100, 300])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.whitesmoke),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(table)
     elements.append(Spacer(1, 20))
+
+    # 지문 제목
+    elements.append(Paragraph(f"지문 제목: {passage[1]}", heading_style))
+    elements.append(Spacer(1, 12))
 
     # 문제별 분석
     for i, result in enumerate(results, 1):
         question, model_answer, student_answer, score, feedback = result
 
-        elements.append(Paragraph(f"[점수: {score}점]", heading_style))
-        elements.append(Paragraph("문제:", normal_style))
+        # 문제 분류 및 점수
+        elements.append(Paragraph(f"[문제 {i} - 점수: {score}/5점]", heading_style))
+        elements.append(Spacer(1, 8))
+
+        # 질문
+        elements.append(Paragraph("질문:", normal_style))
         elements.append(Paragraph(question, normal_style))
         elements.append(Spacer(1, 12))
 
-        elements.append(Paragraph("모범답안:", normal_style))
-        elements.append(Paragraph(model_answer, normal_style))
-        elements.append(Spacer(1, 12))
-
-        elements.append(Paragraph("학생답안:", normal_style))
+        # 학생 답변
+        elements.append(Paragraph("1. 학생 답변", heading_style))
         elements.append(Paragraph(student_answer, normal_style))
         elements.append(Spacer(1, 12))
 
-        elements.append(Paragraph("첨삭 내용:", normal_style))
+        # 모범 답안
+        elements.append(Paragraph("2. 모범 답안", heading_style))
+        elements.append(Paragraph(model_answer, normal_style))
+        elements.append(Spacer(1, 12))
+
+        # 첨삭 내용
+        elements.append(Paragraph("3. 첨삭", heading_style))
         elements.append(Paragraph(feedback, normal_style))
         elements.append(Spacer(1, 20))
 
