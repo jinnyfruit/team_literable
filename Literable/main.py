@@ -17,7 +17,7 @@ def main():
     # 사이드바 구성
     with st.sidebar:
         # 로고 및 제목
-        st.image("Logo.png", width=50)
+        st.image("Literable/Logo.png", width=50)
         st.title("Literable")
         st.markdown("---")
 
