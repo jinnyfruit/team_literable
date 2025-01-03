@@ -1,0 +1,1 @@
+IDRViewer.config = {"pagecount":1,"title":"","author":"","subject":"","keywords":"","creator":"","producer":"macOS 버전 15.0(빌드 24A5298h) Quartz PDFContext","creationdate":"D:20250102010450Z00'00'","moddate":"D:20250102010450Z00'00'","trapped":"","fileName":"final.pdf","bounds":[[825,1191]],"bookmarks":[],"thumbnailType":"jpg","pageType":"html","pageLabels":[]};

@@ -1,0 +1,28 @@
+<svg viewBox="0 0 825 1191" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style>
+.g0{fill:#FFF;}
+.g1{fill:#000;}
+.g2{fill:none;stroke:#000;stroke-width:2.291;stroke-miterlimit:8;}
+.g3{fill:none;stroke:#000;stroke-width:1.527;stroke-linejoin:round;}
+.g4{fill:none;stroke:#FFF;stroke-width:1.527;stroke-linejoin:round;}
+.g5{fill:none;stroke:#FFF;stroke-width:4.583;stroke-linejoin:round;}
+.g6{fill:#00B0F0;}
+</style>
+</defs>
+<path d="M0 0H825V1191.3H0Z" class="g0"/>
+<path d="M0 0H825V1191.7H0Z" class="g1"/>
+<path fill-rule="evenodd" d="M38.9 24.9H786.1c6.8 0 12.2 5.4 12.2 12.1V1121.8H678.5c-6.7 0-12.2 5.5-12.2 12.2v32.8H38.9c-6.8 0-12.2-5.4-12.2-12.2V37c0-6.7 5.4-12.1 12.2-12.1Z" class="g0"/>
+<path d="M52.7 149.4H772.3" class="g2"/>
+<path d="M376.7 54.3v36m76.2-36v36m76.2-36v36m76.2-36v36" class="g3"/>
+<path d="M300.5 54.3v36m381-36v36M299.8 55H682.3" class="g4"/>
+<path d="M299.8 88H682.3" class="g5"/>
+<path d="M59.6 161.7h7.6v23.7H59.6Z" class="g6"/>
+<path d="M59.6 161.7h7.6v23.7H59.6Z" class="g2"/>
+<path d="M59.6 382.3h7.6V406H59.6Z" class="g6"/>
+<path d="M59.6 382.3h7.6V406H59.6Z" class="g2"/>
+<path d="M59.6 598.5h7.6v23.7H59.6Z" class="g6"/>
+<path d="M59.6 598.5h7.6v23.7H59.6Z" class="g2"/>
+<path d="M59.6 873.2h7.6v23.7H59.6Z" class="g6"/>
+<path d="M59.6 873.2h7.6v23.7H59.6Z" class="g2"/>
+</svg>
