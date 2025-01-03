@@ -135,7 +135,7 @@ def analyze_feedback():
             if st.button("📝 AI 첨삭 분석 시작", type="primary") or st.session_state.analysis_started:
                 if not st.session_state.analysis_started:  # 처음 분석 시작할 때만 실행
                     st.session_state.analysis_started = True
-                    system_prompt = load_prompt("prompt.txt")
+                    system_prompt = load_prompt("Literable/prompt.txt")
                     if system_prompt is None:
                         return
 
@@ -196,62 +196,59 @@ def analyze_feedback():
                         st.session_state.saving_in_progress = False
 
                     if st.button("✅ 결과 저장하기", key="save_results", use_container_width=True):
-                        st.session_state.saving_in_progress = True  # Set saving flag
+                        st.session_state.saving_in_progress = True
 
-                    if st.session_state.get('saving_in_progress', False):  # Check if saving is in progress
-                        # Separate spinner for saving
-                        with st.spinner("답안을 저장중입니다..."):
-                            progress_placeholder = st.empty()
-                            status_placeholder = st.empty()
-                            save_success = True
+                    if st.session_state.saving_in_progress:
+                        progress_placeholder = st.empty()
+                        status_placeholder = st.empty()
+                        save_success = True
 
-                            try:
-                                for idx, result in enumerate(st.session_state.analysis_results):
-                                    progress_placeholder.progress((idx + 1) / len(st.session_state.analysis_results))
-                                    status_placeholder.text(
-                                        f"저장 중... ({idx + 1}/{len(st.session_state.analysis_results)})")
+                        try:
+                            for idx, result in enumerate(st.session_state.analysis_results):
+                                progress_placeholder.progress((idx + 1) / len(st.session_state.analysis_results))
+                                status_placeholder.text(f"저장 중... ({idx + 1}/{len(st.session_state.analysis_results)})")
 
-                                    current_question = next(
-                                        (ans['student_answer'] for ans in answers_to_analyze.values()
-                                         if ans['question_id'] == result['question_id']),
-                                        None
-                                    )
+                                current_question = next(
+                                    (ans['student_answer'] for ans in answers_to_analyze.values()
+                                     if ans['question_id'] == result['question_id']),
+                                    None
+                                )
 
-                                    if current_question is None:
-                                        save_success = False
-                                        st.error(f"답안을 찾을 수 없음 - 질문 ID: {result['question_id']}")
-                                        break
+                                if current_question is None:
+                                    save_success = False
+                                    st.error(f"답안을 찾을 수 없음 - 질문 ID: {result['question_id']}")
+                                    break
 
-                                    success = db.save_student_answer(
-                                        student_id=st.session_state.selected_student[0],
-                                        question_id=result['question_id'],
-                                        answer=current_question,
-                                        score=result['score'],
-                                        feedback=result['feedback']
-                                    )
+                                success = db.save_student_answer(
+                                    student_id=st.session_state.selected_student[0],
+                                    question_id=result['question_id'],
+                                    answer=current_question,
+                                    score=result['score'],
+                                    feedback=result['feedback']
+                                )
 
-                                    if not success:
-                                        save_success = False
-                                        st.error(f"답안 저장 실패 - 질문 ID: {result['question_id']}")
-                                        break
+                                if not success:
+                                    save_success = False
+                                    st.error(f"답안 저장 실패 - 질문 ID: {result['question_id']}")
+                                    break
 
-                                # Clean up after save
-                                progress_placeholder.empty()
-                                status_placeholder.empty()
+                            # 저장 완료 후 UI 정리
+                            progress_placeholder.empty()
+                            status_placeholder.empty()
 
-                                if save_success:
-                                    st.success("✅ 모든 답안이 성공적으로 저장되었습니다!")
-                                    st.session_state.saving_in_progress = False
-                                    st.session_state.analysis_started = False  # Reset analysis state
-                                else:
-                                    st.error("일부 답안 저장에 실패했습니다. 다시 시도해주세요.")
-                                    st.session_state.saving_in_progress = False
-
-                            except Exception as e:
-                                progress_placeholder.empty()
-                                status_placeholder.empty()
-                                st.error(f"저장 중 오류 발생: {str(e)}")
+                            if save_success:
+                                st.success("✅ 모든 답안이 성공적으로 저장되었습니다!")
                                 st.session_state.saving_in_progress = False
+                                st.session_state.analysis_started = False
+                            else:
+                                st.error("일부 답안 저장에 실패했습니다. 다시 시도해주세요.")
+                                st.session_state.saving_in_progress = False
+
+                        except Exception as e:
+                            progress_placeholder.empty()
+                            status_placeholder.empty()
+                            st.error(f"저장 중 오류 발생: {str(e)}")
+                            st.session_state.saving_in_progress = False
 
 def show_detailed_analysis():
     """분석 결과 표시 UI 컴포넌트"""
