@@ -133,7 +133,7 @@ def analyze_feedback():
 
             if st.button("📝 AI 첨삭 분석 시작", type="primary") or st.session_state.analysis_started:
                 st.session_state.analysis_started = True
-                system_prompt = load_prompt("prompt.txt")
+                system_prompt = load_prompt("Literable/prompt.txt")
                 if system_prompt is None:
                     return
 
