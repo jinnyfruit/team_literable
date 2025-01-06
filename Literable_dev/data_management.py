@@ -96,33 +96,53 @@ def manage_passages_and_questions():
             warnings = st.empty()
             st.warning("질문 입력창이 최소 하나는 있어야 합니다!")
 
+    # 세션 상태 초기화
+    if 'reset_fields' not in st.session_state:
+        st.session_state.reset_fields = False
+
+    # 입력 필드 초기화 함수
+    # 세션 상태 초기화
+    if 'reset_fields' not in st.session_state:
+        st.session_state.reset_fields = False
+    if 'question_inputs' not in st.session_state:
+        st.session_state.question_inputs = {}
+    if 'answer_inputs' not in st.session_state:
+        st.session_state.answer_inputs = {}
+
+    # 세션 상태 초기화
+    if 'form_key' not in st.session_state:
+        st.session_state.form_key = 0
 
     # 새 지문 추가 섹션
     with st.expander("📝 새로운 지문 및 문제 추가", expanded=True):
-        title = st.text_input("지문 제목", max_chars=100)
-        passage = st.text_area("지문 내용", height=200)
+        current_key = st.session_state.form_key
+
+        title = st.text_input("지문 제목", max_chars=100, key=f"title_{current_key}")
+        passage = st.text_area("지문 내용", height=200, key=f"passage_{current_key}")
 
         for i in range(st.session_state['question_count']):
             st.divider()
             col_q, col_a, col_c = st.columns(3)
             with col_q:
-                st.session_state['questions'][i] = st.text_input(
+                question = st.text_input(
                     f"질문 {i + 1}",
-                    value=st.session_state['questions'][i],
-                    key=f"question_{i}"
+                    key=f"question_{current_key}_{i}"
                 )
+                st.session_state['questions'][i] = question
+
             with col_a:
-                st.session_state['model_answers'][i] = st.text_area(
+                answer = st.text_area(
                     f"모범답안 {i + 1}",
-                    value=st.session_state['model_answers'][i],
-                    key=f"model_answer_{i}",
+                    key=f"model_answer_{current_key}_{i}",
                     height=100
                 )
+                st.session_state['model_answers'][i] = answer
+
             with col_c:
-                st.session_state[f'question_category_{i}'] = st.selectbox(
+                category = st.selectbox(
                     f"카테고리 {i + 1}",
                     CATEGORIES,
-                    key=f"category_{i}"
+                    key=f"category_{current_key}_{i}"
                 )
 
         col1, col2 = st.columns(2)
@@ -131,28 +151,42 @@ def manage_passages_and_questions():
         with col2:
             st.button("➖ 질문 삭제", on_click=delete_question_session)
 
-        # 지문 및 문제 저장 시 카테고리 포함
-        if st.button("💾 지문 및 문제 저장"):
+        # 지문 및 문제 저장
+        if st.button("💾 지문 및 문제 저장", key=f"save_{current_key}"):
             if title and passage:
                 passage_id = db.add_passage(title, passage)
                 valid_questions = [
                     (q, a, cat) for q, a, cat in zip(
                         st.session_state['questions'],
                         st.session_state['model_answers'],
-                        [st.session_state.get(f'question_category_{i}', '기타') for i in
-                         range(st.session_state['question_count'])]
+                        [st.session_state.get(f'category_{current_key}_{i}', '기타')
+                         for i in range(st.session_state['question_count'])]
                     )
                     if q.strip() and a.strip()
                 ]
+
                 for question, model_answer, category in valid_questions:
                     db.add_question(passage_id, question, model_answer, category)
 
                 st.success("✅ 지문과 질문이 성공적으로 추가되었습니다!")
+
+                # form_key를 증가시켜 새로운 폼 생성
+                st.session_state.form_key += 1
+                # questions와 model_answers 배열 초기화
                 st.session_state['questions'] = ["" for _ in range(st.session_state['question_count'])]
                 st.session_state['model_answers'] = ["" for _ in range(st.session_state['question_count'])]
+
+                #time.sleep(0.5)
                 st.rerun()
             else:
                 st.error("제목과 내용을 모두 입력해주세요.")
+        # reset_fields 상태 초기화
+        if st.session_state.reset_fields:
+            st.session_state.reset_fields = False
+
+        # reset_fields 상태 초기화
+        if st.session_state.reset_fields:
+            st.session_state.reset_fields = False
 
     # 지문 목록 섹션
     st.header("📋 등록된 지문 목록")
