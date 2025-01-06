@@ -16,6 +16,14 @@ headers_fn_call = {
     "api-key": FN_CALL_KEY
 }
 
+# 파일 상단에 추가
+CATEGORY_PROMPT_MAP = {
+    '사실적 독해': 'factual',
+    '추론적 독해': 'inferential',
+    '비판적 독해': 'critical',
+    '창의적 독해': 'creative',
+    '': 'default'
+}
 
 def call_llm(system_prompt: str, user_prompt: str) -> Optional[str]:
     """AI 모델 호출 함수"""
@@ -36,13 +44,16 @@ def call_llm(system_prompt: str, user_prompt: str) -> Optional[str]:
         return None
 
 
-def load_prompt(filename: str) -> Optional[str]:
-    """프롬프트 파일 로드 함수"""
+def load_prompt(category: str) -> Optional[str]:
+    """카테고리별 프롬프트 파일 로드 함수"""
     try:
-        with open(filename, 'r', encoding='utf-8') as file:
+        prompt_type = CATEGORY_PROMPT_MAP.get(category, 'default')
+        prompt_filename = f"prompts/{prompt_type}.txt"
+
+        with open(prompt_filename, 'r', encoding='utf-8') as file:
             return file.read()
     except FileNotFoundError:
-        st.error(f"프롬프트 파일을 찾을 수 없습니다: {filename}")
+        st.error(f"프롬프트 파일을 찾을 수 없습니다: {prompt_filename}")
         return None
     except Exception as e:
         st.error(f"프롬프트 파일 읽기 오류: {str(e)}")
@@ -123,7 +134,8 @@ def analyze_feedback():
                     'question_id': question[0],
                     'question_text': question[2],
                     'model_answer': question[3],
-                    'student_answer': answer[3]
+                    'student_answer': answer[3],
+                    'category': question[4]  # 카테고리 추가
                 }
                 questions_order.append(i)
 
@@ -133,43 +145,55 @@ def analyze_feedback():
 
             # 분석 시작 버튼
             if st.button("📝 AI 첨삭 분석 시작", type="primary") or st.session_state.analysis_started:
-                if not st.session_state.analysis_started:  # 처음 분석 시작할 때만 실행
+                if not st.session_state.analysis_started:
                     st.session_state.analysis_started = True
-                    system_prompt = load_prompt("prompt.txt")
-                    if system_prompt is None:
-                        return
 
                     with st.spinner("AI가 답안을 분석중입니다..."):
                         analysis_results = []
                         progress_bar = st.progress(0)
 
                         for i, q_num in enumerate(questions_order):
-                            data = answers_to_analyze[q_num]
-                            progress_text = st.empty()
-                            progress_text.text(f"분석 진행중... ({i + 1}/{len(questions_order)})")
-                            progress_bar.progress((i + 1) / len(questions_order))
+                            try:
+                                data = answers_to_analyze[q_num]
+                                progress_text = st.empty()
+                                progress_text.text(f"분석 진행중... ({i + 1}/{len(questions_order)})")
+                                progress_bar.progress((i + 1) / len(questions_order))
 
-                            user_prompt = f"""
-                            문제: {data['question_text']}
-                            모범답안: {data['model_answer']}
-                            학생답안: {data['student_answer']}
-                            """
+                                # 카테고리별 프롬프트 로드
+                                category = data.get('category', '')  # 카테고리가 없을 경우 빈 문자열
+                                system_prompt = load_prompt(category)
 
-                            result = call_llm(system_prompt, user_prompt)
-                            if result:
+                                if system_prompt is None:
+                                    st.warning(f"카테고리 '{category}'에 대한 프롬프트를 찾을 수 없어 기본 프롬프트를 사용합니다.")
+                                    system_prompt = load_prompt('')  # 빈 문자열을 전달하여 default.txt 사용
+                                    if system_prompt is None:
+                                        continue
+
+                                user_prompt = f"""
+                                문제: {data['question_text']}
+                                모범답안: {data['model_answer']}
+                                학생답안: {data['student_answer']}
+                                """
+
                                 try:
-                                    score_text = result.split('점수:')[1].split('\n')[0]
-                                    score = int(score_text.replace('점', '').strip())
-                                    feedback = result.split('첨삭:')[1].strip()
+                                    result = call_llm(system_prompt, user_prompt)
+                                    if result:
+                                        score_text = result.split('점수:')[1].split('\n')[0]
+                                        score = int(score_text.replace('점', '').strip())
+                                        feedback = result.split('첨삭:')[1].strip()
 
-                                    analysis_results.append({
-                                        'question_id': data['question_id'],
-                                        'score': score,
-                                        'feedback': feedback
-                                    })
+                                        analysis_results.append({
+                                            'question_id': data['question_id'],
+                                            'score': score,
+                                            'feedback': feedback
+                                        })
                                 except Exception as e:
-                                    st.error(f"분석 중 오류가 발생했습니다: {str(e)}")
+                                    st.error(f"결과 파싱 중 오류가 발생했습니다: {str(e)}")
                                     continue
+
+                            except Exception as e:
+                                st.error(f"문제 분석 중 오류가 발생했습니다: {str(e)}")
+                                continue
 
                         progress_text.empty()
                         progress_bar.empty()

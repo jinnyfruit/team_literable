@@ -1,124 +1,112 @@
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from io import BytesIO
-import streamlit as st
 import pdfkit
-from reportlab.lib import colors
 from typing import List, Tuple
+from fpdf import FPDF
+import streamlit as st
 from datetime import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
-from io import BytesIO
-from datetime import datetime
+import os
+import urllib.request
 
-def generate_pdf_report(student: Tuple, passage: Tuple, results: List[Tuple]) -> bytes:
-    """PDF 보고서 생성 - 한글 출력 에러 방지"""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=72,
-        leftMargin=72,
-        topMargin=72,
-        bottomMargin=72
-    )
 
-    # 스타일 정의
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica',
-        fontSize=16,
-        spaceAfter=30,
-        alignment=1
-    )
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontName='Helvetica',
-        fontSize=14,
-        spaceAfter=12
-    )
-    normal_style = ParagraphStyle(
-        'CustomNormal',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=10,
-        leading=14
-    )
+class PDF(FPDF):
+    def __init__(self):
+        super().__init__()
+        # 기본 마진 설정
+        self.set_margin(15)
+        # 한글 폰트 추가 - NanumGothic 사용
+        self.add_font('NanumGothic', '', './fonts/NanumGothic.ttf', uni=True)
+        self.add_font('NanumGothic-Bold', '', './fonts/NanumGothic-Bold.ttf', uni=True)
 
-    # 문서 요소 생성
-    elements = []
 
-    # 제목
-    elements.append(Paragraph("리터러블 문해력 솔루션 보고서", title_style))
-    elements.append(Spacer(1, 12))
+def setup_fonts():
+    """폰트 디렉토리 생성 및 폰트 다운로드"""
+    try:
+        # 폰트 디렉토리 생성
+        if not os.path.exists('fonts'):
+            os.makedirs('fonts')
 
-    # 학생 정보
-    current_date = datetime.now().strftime("%Y년 %m월 %d일")
-    student_info = [
-        ["솔루션 일시", current_date],
-        ["학생명", student[1]],
-        ["학년", f"{student[2]} {student[3]}"],
-        ["총점", f"{sum(r[3] for r in results)}/{len(results) * 5}"]
-    ]
-    table = Table(student_info, colWidths=[100, 300])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.whitesmoke),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-    ]))
-    elements.append(table)
-    elements.append(Spacer(1, 20))
+        # 나눔고딕 폰트 다운로드 (없는 경우)
+        font_files = {
+            'NanumGothic.ttf': 'https://github.com/googlefonts/nanum-gothic/raw/main/fonts/NanumGothic-Regular.ttf',
+            'NanumGothic-Bold.ttf': 'https://github.com/googlefonts/nanum-gothic/raw/main/fonts/NanumGothic-Bold.ttf'
+        }
 
-    # 지문 제목
-    elements.append(Paragraph(f"지문 제목: {passage[1]}", heading_style))
-    elements.append(Spacer(1, 12))
+        for font_name, url in font_files.items():
+            font_path = f'./fonts/{font_name}'
+            if not os.path.exists(font_path):
+                urllib.request.urlretrieve(url, font_path)
+    except Exception as e:
+        st.error(f"폰트 설정 중 오류가 발생했습니다: {str(e)}")
 
-    # 문제별 분석
-    for i, result in enumerate(results, 1):
-        question, model_answer, student_answer, score, feedback = result
 
-        # 문제 분류 및 점수
-        elements.append(Paragraph(f"[문제 {i} - 점수: {score}/5점]", heading_style))
-        elements.append(Spacer(1, 8))
+def generate_pdf_report(student: tuple, passage: tuple, results: list) -> bytes:
+    """한글 폰트를 사용하여 PDF 생성"""
+    try:
+        # 폰트 설정
+        setup_fonts()
 
-        # 질문
-        elements.append(Paragraph("질문:", normal_style))
-        elements.append(Paragraph(question, normal_style))
-        elements.append(Spacer(1, 12))
+        # PDF 생성
+        pdf = PDF()
+        pdf.add_page()
 
-        # 학생 답변
-        elements.append(Paragraph("1. 학생 답변", heading_style))
-        elements.append(Paragraph(student_answer, normal_style))
-        elements.append(Spacer(1, 12))
+        # 제목 (굵은 글씨)
+        pdf.set_font('NanumGothic-Bold', size=16)
+        pdf.cell(0, 10, "리터러블 문해력 솔루션 보고서", ln=True, align='C')
+        pdf.ln(5)
 
-        # 모범 답안
-        elements.append(Paragraph("2. 모범 답안", heading_style))
-        elements.append(Paragraph(model_answer, normal_style))
-        elements.append(Spacer(1, 12))
+        # 기본 정보
+        pdf.set_font('NanumGothic', size=10)
+        pdf.cell(0, 10, f"날짜: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
+        pdf.cell(0, 10, f"학생: {student[1]}", ln=True)
+        pdf.cell(0, 10, f"학년: {student[2]} {student[3]}", ln=True)
+        pdf.ln(5)
 
-        # 첨삭 내용
-        elements.append(Paragraph("3. 첨삭", heading_style))
-        elements.append(Paragraph(feedback, normal_style))
-        elements.append(Spacer(1, 20))
+        # 지문 내용
+        pdf.set_font('NanumGothic-Bold', size=12)
+        pdf.cell(0, 10, "지문", ln=True)
+        pdf.set_font('NanumGothic', size=10)
+        pdf.multi_cell(0, 10, passage[2])
+        pdf.ln(5)
 
-    # PDF 생성
-    doc.build(elements)
-    pdf_data = buffer.getvalue()
-    buffer.close()
-    return pdf_data
+        # 각 문제 분석
+        for idx, result in enumerate(results, 1):
+            question, model_answer, student_answer, score, feedback = result
+
+            # 문제 번호와 점수
+            pdf.set_font('NanumGothic-Bold', size=12)
+            pdf.cell(0, 10, f"문제 {idx} - 점수: {score}/5", ln=True)
+            pdf.ln(5)
+
+            pdf.set_font('NanumGothic-Bold', size=10)
+            pdf.cell(0, 10, "문제:", ln=True)
+            pdf.set_font('NanumGothic', size=10)
+            pdf.multi_cell(0, 10, str(question))
+            pdf.ln(5)
+
+            pdf.set_font('NanumGothic-Bold', size=10)
+            pdf.cell(0, 10, "학생 답변:", ln=True)
+            pdf.set_font('NanumGothic', size=10)
+            pdf.multi_cell(0, 10, str(student_answer))
+            pdf.ln(5)
+
+            pdf.set_font('NanumGothic-Bold', size=10)
+            pdf.cell(0, 10, "모범 답안:", ln=True)
+            pdf.set_font('NanumGothic', size=10)
+            pdf.multi_cell(0, 10, str(model_answer))
+            pdf.ln(5)
+
+            pdf.set_font('NanumGothic-Bold', size=10)
+            pdf.cell(0, 10, "피드백:", ln=True)
+            pdf.set_font('NanumGothic', size=10)
+            pdf.multi_cell(0, 10, str(feedback))
+            pdf.ln(10)
+
+        return bytes(pdf.output())
+
+    except Exception as e:
+        print(f"Error details: {str(e)}")
+        st.error(f"PDF 생성 중 오류가 발생했습니다: {str(e)}")
+        return None
+
 
 def get_question_type_icon(question_text: str) -> str:
     """문제 유형에 따른 아이콘 반환"""
