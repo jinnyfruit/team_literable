@@ -48,8 +48,8 @@ def load_prompt(category: str) -> Optional[str]:
     """카테고리별 프롬프트 파일 로드 함수"""
     try:
         prompt_type = CATEGORY_PROMPT_MAP.get(category, 'default')
-        #prompt_filename = f"prompts/{prompt_type}.txt"
-        prompt_filename = "Literable/prompt.txt"
+        prompt_filename = f"Literable/prompts/{prompt_type}.txt"
+        #prompt_filename = "Literable/prompt.txt"
         st.write(f"📁 프롬프트 파일 로드 시도: {prompt_filename}")  # 로딩 시도 로그
 
         with open(prompt_filename, 'r', encoding='utf-8') as file:
